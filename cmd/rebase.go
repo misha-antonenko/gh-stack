@@ -164,20 +164,7 @@ func runRebase(cfg *config.Config, opts *rebaseOptions) error {
 		cfg.Warningf("Current branch %q has already been merged", currentBranch)
 	}
 
-	startIdx := 0
-	endIdx := len(s.Branches)
-
-	if opts.downstack {
-		endIdx = currentIdx + 1
-	}
-	if opts.upstack {
-		startIdx = currentIdx
-	}
-
-	// With --no-trunk, skip the first branch (which would rebase onto trunk).
-	if opts.noTrunk && startIdx < 1 {
-		startIdx = 1
-	}
+	startIdx, endIdx := computeCascadeRange(s, currentIdx, opts.downstack, opts.upstack, opts.noTrunk)
 
 	branchesToRebase := s.Branches[startIdx:endIdx]
 

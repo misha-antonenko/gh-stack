@@ -234,6 +234,53 @@ gh stack rebase --abort
 gh stack rebase --committer-date-is-author-date
 ```
 
+### `gh stack pull`
+
+Pull from remote and propagate updates across the stack using merges.
+
+```
+gh stack pull [flags] [branch]
+```
+
+Like `gh stack rebase`, but each branch takes the tip of the previous layer through a merge commit instead of a rebase, preserving existing history. Fetches the latest changes from `origin`, then merges each branch's effective parent (its nearest non-merged ancestor, or trunk) into it, in order from trunk upward. Merged PRs are skipped; their descendants merge from trunk. Queued PRs are skipped too, but their descendants merge from the queued branch, keeping its not-yet-landed commits.
+
+If a merge conflict occurs, the operation pauses and prints the conflicted files with line numbers. Resolve the conflicts, stage with `git add`, and continue with `--continue`. To undo the entire pull, use `--abort` to restore all branches to their pre-pull state.
+
+| Flag | Description |
+|------|-------------|
+| `--downstack` | Only pull branches from trunk to the current branch |
+| `--upstack` | Only pull branches from the current branch to the top |
+| `--no-trunk` | Skip trunk — only merge stack branches into each other (no fetch, no trunk merge) |
+| `--continue` | Continue the pull after resolving conflicts |
+| `--abort` | Abort the pull and restore all branches to their pre-pull state |
+| `--remote <name>` | Remote to fetch from (defaults to auto-detected remote) |
+
+| Argument | Description |
+|----------|-------------|
+| `[branch]` | Target branch (defaults to the current branch) |
+
+**Examples:**
+
+```sh
+# Pull the entire stack
+gh stack pull
+
+# Only pull branches below the current one
+gh stack pull --downstack
+
+# Only pull branches above the current one
+gh stack pull --upstack
+
+# Merge stack branches without pulling from or merging trunk
+gh stack pull --no-trunk
+
+# After resolving a conflict
+gh stack pull --continue
+
+# Abort pull and restore everything
+gh stack pull --abort
+```
+
 ### `gh stack modify`
 
 Interactively restructure the current stack.

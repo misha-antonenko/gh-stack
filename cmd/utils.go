@@ -1261,6 +1261,102 @@ func cascadeRebase(opts cascadeRebaseOpts) cascadeRebaseResult {
 	return result
 }
 
+// effectiveParentBranch returns the branch a stack branch should sit on top of:
+// its nearest non-merged ancestor, or trunk if none. Merged ancestors are
+// skipped because their commits already live in trunk. Queued ancestors are
+// kept, since their commits are not yet in trunk.
+func effectiveParentBranch(s *stack.Stack, absIdx int, trunkRef string) string {
+	if trunkRef == "" {
+		trunkRef = s.Trunk.Branch
+	}
+	for j := absIdx - 1; j >= 0; j-- {
+		if !s.Branches[j].IsMerged() {
+			return s.Branches[j].Branch
+		}
+	}
+	return trunkRef
+}
+
+// computeCascadeRange returns the [startIdx, endIdx) slice of Stack.Branches a
+// cascade should operate on, given the current branch index and the range
+// flags. Shared by the rebase and pull commands.
+func computeCascadeRange(s *stack.Stack, currentIdx int, downstack, upstack, noTrunk bool) (startIdx, endIdx int) {
+	startIdx = 0
+	endIdx = len(s.Branches)
+	if downstack {
+		endIdx = currentIdx + 1
+	}
+	if upstack {
+		startIdx = currentIdx
+	}
+	// With --no-trunk, skip the first branch (which would merge/rebase onto trunk).
+	if noTrunk && startIdx < 1 {
+		startIdx = 1
+	}
+	return startIdx, endIdx
+}
+
+// cascadeMerge propagates updates up a stack range using git merge: each active
+// branch has its effective parent merged into it, bottom-up. It stops at the
+// first conflict and returns a result describing what happened, sharing the
+// result type with cascadeRebase. Unlike a rebase, merging is additive, so no
+// --onto/oldBase bookkeeping is needed; merged and queued branches are simply
+// skipped and their descendants merge from the effective parent.
+func cascadeMerge(opts cascadeRebaseOpts) cascadeRebaseResult {
+	s := opts.Stack
+	cfg := opts.Cfg
+	result := cascadeRebaseResult{}
+	trunkRef := opts.trunkRef()
+
+	for i, br := range opts.Branches {
+		absIdx := opts.StartAbsIdx + i
+
+		if br.IsSkipped() {
+			if br.IsMerged() {
+				cfg.Successf("Skipping %s (PR %s merged)", br.Branch, cfg.PRLink(br.PullRequest.Number, br.PullRequest.URL))
+			} else {
+				cfg.Successf("Skipping %s (PR %s queued)", br.Branch, cfg.PRLink(br.PullRequest.Number, br.PullRequest.URL))
+			}
+			continue
+		}
+
+		base := effectiveParentBranch(s, absIdx, trunkRef)
+
+		if err := git.CheckoutBranch(br.Branch); err != nil {
+			return cascadeRebaseResult{
+				Rebased: result.Rebased,
+				Err:     fmt.Errorf("checking out %s: %w", br.Branch, err),
+			}
+		}
+
+		if err := git.Merge(base); err != nil {
+			if git.IsMergeStartError(err) {
+				return cascadeRebaseResult{
+					Rebased: result.Rebased,
+					Err:     fmt.Errorf("could not start merge of %s into %s: %w", base, br.Branch, err),
+				}
+			}
+			remaining := make([]string, 0, len(opts.Branches)-i-1)
+			for j := i + 1; j < len(opts.Branches); j++ {
+				remaining = append(remaining, opts.Branches[j].Branch)
+			}
+			return cascadeRebaseResult{
+				Rebased:        result.Rebased,
+				Conflicted:     true,
+				ConflictIdx:    absIdx,
+				ConflictBranch: br.Branch,
+				ConflictBase:   base,
+				Remaining:      remaining,
+			}
+		}
+
+		cfg.Successf("Merged %s into %s", base, br.Branch)
+		result.Rebased = true
+	}
+
+	return result
+}
+
 // verifyStacked returns active branches in the requested range that do not
 // contain their effective parent.
 func verifyStacked(s *stack.Stack, trunkRef string, startIdx, endIdx int) []string {
@@ -1280,13 +1376,7 @@ func verifyStacked(s *stack.Stack, trunkRef string, startIdx, endIdx int) []stri
 		if br.IsSkipped() {
 			continue
 		}
-		parent := trunkRef
-		for j := i - 1; j >= 0; j-- {
-			if !s.Branches[j].IsMerged() {
-				parent = s.Branches[j].Branch
-				break
-			}
-		}
+		parent := effectiveParentBranch(s, i, trunkRef)
 		isAnc, err := git.IsAncestor(parent, br.Branch)
 		if err != nil || !isAnc {
 			unstacked = append(unstacked, br.Branch)
