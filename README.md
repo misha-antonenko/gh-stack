@@ -7,18 +7,10 @@ Stacked PRs break large changes into a chain of small, reviewable pull requests 
 ## Installation
 
 ```sh
-gh extension install github/gh-stack
+gh extension install misha-antonenko/gh-stack
 ```
 
 Requires the [GitHub CLI](https://cli.github.com/) (`gh`) v2.0+.
-
-## AI agent integration
-
-Install the gh-stack skill so your AI coding agent knows how to work with stacked PRs and the `gh stack` CLI:
-
-```sh
-gh skill install github/gh-stack
-```
 
 ## Quick start
 
