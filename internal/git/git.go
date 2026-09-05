@@ -99,6 +99,66 @@ func runRebaseCommand(args []string, opts RebaseOpts) error {
 	return err
 }
 
+// MergeStartError indicates that git rejected a merge before creating any merge
+// state (no MERGE_HEAD). There is nothing to continue or abort in this case.
+type MergeStartError struct {
+	Err error
+}
+
+func (e *MergeStartError) Error() string {
+	return e.Err.Error()
+}
+
+func (e *MergeStartError) Unwrap() error {
+	return e.Err
+}
+
+func IsMergeStartError(err error) bool {
+	var startErr *MergeStartError
+	return errors.As(err, &startErr)
+}
+
+func runMergeCommand(args []string) error {
+	if IsMergeInProgress() {
+		return &MergeStartError{Err: errors.New("a merge is already in progress")}
+	}
+	err := runSilent(args...)
+	if err == nil {
+		return nil
+	}
+	err = tryAutoResolveMerge(err)
+	if err != nil && !IsMergeInProgress() {
+		return &MergeStartError{Err: err}
+	}
+	return err
+}
+
+// mergeContinueOnce finalizes an in-progress merge without opening an editor.
+func mergeContinueOnce() error {
+	cmd := exec.Command("git", "merge", "--continue")
+	cmd.Env = append(os.Environ(), "GIT_EDITOR=true")
+	return cmd.Run()
+}
+
+// tryAutoResolveMerge checks whether rerere has resolved all conflicts from a
+// failed merge. If so, it finalizes the merge. Returns originalErr if any
+// conflicts remain that need manual resolution. Unlike a rebase, a merge
+// produces a single commit, so no replay loop is needed.
+func tryAutoResolveMerge(originalErr error) error {
+	if !IsMergeInProgress() {
+		return originalErr
+	}
+	conflicts, err := ConflictedFiles()
+	if err != nil || len(conflicts) > 0 {
+		return originalErr
+	}
+	// Rerere resolved all conflicts — finalize the merge.
+	if mergeContinueOnce() == nil {
+		return nil
+	}
+	return originalErr
+}
+
 // rebaseContinueOnce runs a single git rebase --continue without auto-resolve.
 func rebaseContinueOnce(opts RebaseOpts) error {
 	args := []string{"rebase"}
@@ -279,6 +339,30 @@ func RebaseAbort() error {
 // IsRebaseInProgress checks whether a rebase is currently in progress.
 func IsRebaseInProgress() bool {
 	return ops.IsRebaseInProgress()
+}
+
+// Merge merges the given base into the current branch, creating a merge commit.
+// If rerere resolves all conflicts automatically, the merge is finalized
+// without user intervention.
+func Merge(base string) error {
+	return ops.Merge(base)
+}
+
+// MergeContinue finalizes an in-progress merge after conflicts are resolved.
+// It sets GIT_EDITOR=true to keep git from opening an interactive editor for the
+// merge commit message, which would cause the command to hang.
+func MergeContinue() error {
+	return ops.MergeContinue()
+}
+
+// MergeAbort aborts an in-progress merge, restoring the pre-merge state.
+func MergeAbort() error {
+	return ops.MergeAbort()
+}
+
+// IsMergeInProgress checks whether a merge is currently in progress.
+func IsMergeInProgress() bool {
+	return ops.IsMergeInProgress()
 }
 
 // ConflictedFiles returns the list of files that have merge conflicts.

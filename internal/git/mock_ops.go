@@ -30,6 +30,10 @@ type MockOps struct {
 	RebaseContinueFn         func(RebaseOpts) error
 	RebaseAbortFn            func() error
 	IsRebaseInProgressFn     func() bool
+	MergeFn                  func(string) error
+	MergeContinueFn          func() error
+	MergeAbortFn             func() error
+	IsMergeInProgressFn      func() bool
 	ConflictedFilesFn        func() ([]string, error)
 	FindConflictMarkersFn    func(string) (*ConflictMarkerInfo, error)
 	IsAncestorFn             func(string, string) (bool, error)
@@ -231,6 +235,34 @@ func (m *MockOps) RebaseAbort() error {
 func (m *MockOps) IsRebaseInProgress() bool {
 	if m.IsRebaseInProgressFn != nil {
 		return m.IsRebaseInProgressFn()
+	}
+	return false
+}
+
+func (m *MockOps) Merge(base string) error {
+	if m.MergeFn != nil {
+		return m.MergeFn(base)
+	}
+	return nil
+}
+
+func (m *MockOps) MergeContinue() error {
+	if m.MergeContinueFn != nil {
+		return m.MergeContinueFn()
+	}
+	return nil
+}
+
+func (m *MockOps) MergeAbort() error {
+	if m.MergeAbortFn != nil {
+		return m.MergeAbortFn()
+	}
+	return nil
+}
+
+func (m *MockOps) IsMergeInProgress() bool {
+	if m.IsMergeInProgressFn != nil {
+		return m.IsMergeInProgressFn()
 	}
 	return false
 }

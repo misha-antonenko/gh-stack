@@ -50,6 +50,10 @@ type Ops interface {
 	RebaseContinue(opts RebaseOpts) error
 	RebaseAbort() error
 	IsRebaseInProgress() bool
+	Merge(base string) error
+	MergeContinue() error
+	MergeAbort() error
+	IsMergeInProgress() bool
 	ConflictedFiles() ([]string, error)
 	FindConflictMarkers(filePath string) (*ConflictMarkerInfo, error)
 	IsAncestor(ancestor, descendant string) (bool, error)
@@ -353,6 +357,29 @@ func (d *defaultOps) IsRebaseInProgress() bool {
 		if info, err := os.Stat(rebasePath); err == nil && info.IsDir() {
 			return true
 		}
+	}
+	return false
+}
+
+func (d *defaultOps) Merge(base string) error {
+	return runMergeCommand([]string{"merge", "--no-edit", base})
+}
+
+func (d *defaultOps) MergeContinue() error {
+	return mergeContinueOnce()
+}
+
+func (d *defaultOps) MergeAbort() error {
+	return runSilent("merge", "--abort")
+}
+
+func (d *defaultOps) IsMergeInProgress() bool {
+	gitDir, err := GitDir()
+	if err != nil {
+		return false
+	}
+	if _, err := os.Stat(filepath.Join(gitDir, "MERGE_HEAD")); err == nil {
+		return true
 	}
 	return false
 }

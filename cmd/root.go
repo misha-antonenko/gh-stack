@@ -104,6 +104,10 @@ locally, then push to GitHub to create your stack of PRs.`,
 	rebaseCmd.GroupID = "remote"
 	root.AddCommand(rebaseCmd)
 
+	pullCmd := PullCmd(cfg)
+	pullCmd.GroupID = "remote"
+	root.AddCommand(pullCmd)
+
 	pushCmd := PushCmd(cfg)
 	pushCmd.GroupID = "remote"
 	root.AddCommand(pushCmd)
